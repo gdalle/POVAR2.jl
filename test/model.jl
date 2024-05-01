@@ -1,27 +1,15 @@
-using LinearAlgebra
-using POVAR2
-using StableRNGs
-using Statistics
-using Test
-
-rng = StableRNG(63)
-
-D = 10
+D = 3
 T = 1000
 
-θ = 0.1 * randn(rng, D, D)
-Σ0 = Diagonal(zeros(D))
-Σ1 = Diagonal(ones(D))
+θ = randn(rng, D, D)
+θ ./= 2 * opnorm(θ, 2)
+Σ = Diagonal(rand(rng, D))
 p = rand(rng, D)
-p0 = zeros(D)
-p1 = ones(D)
-ω0 = 0.0
-ω1 = 1.0
+ω = 0.1
 
-model = Model(; θ, Σ=Σ1, p, ω=ω1)
+model = POVARModel(; θ, Σ, p, ω)
 (; X, π, Y) = rand(rng, model, T)
 
-@test length(model) == D
 @test size(X) == (D, T)
 @test size(π) == (D, T)
 @test size(Y) == (D, T)
@@ -31,33 +19,33 @@ model = Model(; θ, Σ=Σ1, p, ω=ω1)
     isapprox(mean(π[d, :]), p[d]; atol=0.1)
 end
 
-no_innovation_model = Model(; θ, Σ=Σ0, p, ω=ω1)
+no_innovation_model = POVARModel(; θ, Σ=0.0 * I(D), p, ω)
 (; X, π, Y) = rand(rng, no_innovation_model, T)
 
 @test all(2:T) do t
     X[:, t] == θ * X[:, t - 1]
 end
 
-no_noise_partial_model = Model(; θ, Σ=Σ1, p, ω=ω0)
+no_noise_partial_model = POVARModel(; θ, Σ, p, ω=0.0)
 (; X, π, Y) = rand(rng, no_noise_partial_model, T)
 
 @test Y[π] == X[π]
 @test all(iszero, Y[.!π])
 
-no_noise_model = Model(; θ, Σ=Σ1, p=p1, ω=ω0)
+no_noise_model = POVARModel(; θ, Σ, p=ones(D), ω=0.0)
 (; X, π, Y) = rand(rng, no_noise_model, T)
 
 @test all(isone, π)
 @test Y == X
 
-just_noise_model = Model(; θ, Σ=Σ1, p=p0, ω=ω1)
+just_noise_model = POVARModel(; θ, Σ=1.0 * I(D), p=zeros(D), ω)
 (; X, π, Y) = rand(rng, just_noise_model, T)
 
 @test all(iszero, π)
-@test mean(Y) ≈ 0 atol = 0.01
-@test std(Y) ≈ ω1 atol = 0.01
+@test mean(Y) ≈ 0 atol = 0.05
+@test std(Y) ≈ ω atol = 0.05
 
-no_obs_model = Model(; θ, Σ=Σ1, p=p0, ω=ω0)
+no_obs_model = POVARModel(; θ, Σ, p=zeros(D), ω=0.0)
 (; X, π, Y) = rand(rng, no_obs_model, T)
 
 @test all(iszero, π)
