@@ -3,8 +3,9 @@ struct POVARModel{R<:Real,M1<:AbstractMatrix{R},M2<:AbstractMatrix{R},V<:Abstrac
     Σ::M2
     p::V
     ω::R
+    T::Int
 
-    function POVARModel(; θ::M1, Σ::M2, p::V, ω::R) where {R,M1,M2,V}
+    function POVARModel(; θ::M1, Σ::M2, p::V, ω::R, T::Int) where {R,M1,M2,V}
         # correct values
         @assert opnorm(θ, 2) < 1
         @assert issymmetric(Σ)
@@ -17,12 +18,18 @@ struct POVARModel{R<:Real,M1<:AbstractMatrix{R},M2<:AbstractMatrix{R},V<:Abstrac
         @assert checksquare(Σ) == D
         @assert length(p) == D
         # construct
-        return new{R,M1,M2,V}(θ, Σ, p, ω)
+        return new{R,M1,M2,V}(θ, Σ, p, ω, T)
     end
 end
 
-function Base.rand(rng::AbstractRNG, m::POVARModel{R}, T::Integer) where {R}
-    (; θ, Σ, p, ω) = m
+@kwdef struct Dataset{XT,PT,YT}
+    X::XT
+    proj::PT
+    Y::YT
+end
+
+function Base.rand(rng::AbstractRNG, model::POVARModel{R}) where {R}
+    (; θ, Σ, p, ω, T) = model
     D = size(θ, 1)
 
     innovation_dist = MvNormal(zeros(D), Σ)
@@ -38,12 +45,12 @@ function Base.rand(rng::AbstractRNG, m::POVARModel{R}, T::Integer) where {R}
         X[:, t] .+= ε[:, t]
     end
 
-    π = Matrix{Bool}(undef, D, T)
+    proj = Matrix{Bool}(undef, D, T)
     @views for d in 1:D
-        rand!(Bernoulli(p[d]), π[d, :])
+        rand!(rng, Bernoulli(p[d]), proj[d, :])
     end
 
-    Y = π .* X .+ η
+    Y = proj .* X .+ η
 
-    return (; X, π, Y)
+    return Dataset(; X, proj, Y)
 end

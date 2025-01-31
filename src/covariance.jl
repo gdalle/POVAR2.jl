@@ -10,18 +10,18 @@ function scaling(model::POVARModel, h::Integer)
 end
 
 function empirical_covariance(
-    π::AbstractMatrix{Bool}, Y::AbstractMatrix{<:Real}, model::POVARModel, h::Integer
+    proj::AbstractMatrix{Bool}, Y::AbstractMatrix{<:Real}, model::POVARModel, h::Integer
 )
     (; ω) = model
     D, T = size(Y)
+    S = scaling(model, h)
     Γ = zeros(D, D)
-    X̂ = π .* Y
+    X̂ = proj .* Y
     @views for t in 1:(T - h)
         Γₜ = X̂[:, t + h] * X̂[:, t]'
         Γ .+= Γₜ
     end
-    Γ ./= (T - h)
-    Γ ./= scaling(model, h)
+    Γ ./= (T - h) .* S
     if h == 0
         Γ .-= ω^2 * I(D)
     end

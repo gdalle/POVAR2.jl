@@ -1,3 +1,10 @@
+using POVAR2
+using LinearAlgebra, Statistics
+using StableRNGs
+using Test
+
+rng = StableRNG(63)
+
 D = 3
 T = 1000
 
@@ -7,46 +14,56 @@ T = 1000
 p = rand(rng, D)
 ω = 0.1
 
-model = POVARModel(; θ, Σ, p, ω)
-(; X, π, Y) = rand(rng, model, T)
+model = POVARModel(; θ, Σ, p, ω, T)
+(; X, proj, Y) = rand(rng, model)
 
-@test size(X) == (D, T)
-@test size(π) == (D, T)
-@test size(Y) == (D, T)
-@test eltype(X) == eltype(Y)
-@test eltype(π) <: Bool
-@test all(1:D) do d
-    isapprox(mean(π[d, :]), p[d]; atol=0.1)
+@testset "Formalities" begin
+    @test size(X) == (D, T)
+    @test size(proj) == (D, T)
+    @test size(Y) == (D, T)
+    @test eltype(X) == eltype(Y)
+    @test eltype(proj) == Bool
+    @test all(1:D) do d
+        isapprox(mean(proj[d, :]), p[d]; atol=0.1)
+    end
 end
 
-no_innovation_model = POVARModel(; θ, Σ=0.0 * I(D), p, ω)
-(; X, π, Y) = rand(rng, no_innovation_model, T)
+@testset "No innovation" begin
+    no_innovation_model = POVARModel(; θ, Σ=0.0 * I(D), p, ω, T)
+    (; X, proj, Y) = rand(rng, no_innovation_model)
 
-@test all(2:T) do t
-    X[:, t] == θ * X[:, t - 1]
+    @test all(2:T) do t
+        X[:, t] == θ * X[:, t - 1]
+    end
 end
 
-no_noise_partial_model = POVARModel(; θ, Σ, p, ω=0.0)
-(; X, π, Y) = rand(rng, no_noise_partial_model, T)
+@testset "No noise" begin
+    no_noise_partial_model = POVARModel(; θ, Σ, p, ω=0.0, T)
+    (; X, proj, Y) = rand(rng, no_noise_partial_model)
 
-@test Y[π] == X[π]
-@test all(iszero, Y[.!π])
+    @test Y[proj] == X[proj]
+    @test all(iszero, Y[.!proj])
 
-no_noise_model = POVARModel(; θ, Σ, p=ones(D), ω=0.0)
-(; X, π, Y) = rand(rng, no_noise_model, T)
+    no_noise_model = POVARModel(; θ, Σ, p=ones(D), ω=0.0, T)
+    (; X, proj, Y) = rand(rng, no_noise_model)
 
-@test all(isone, π)
-@test Y == X
+    @test all(isone, proj)
+    @test Y == X
+end
 
-just_noise_model = POVARModel(; θ, Σ=1.0 * I(D), p=zeros(D), ω)
-(; X, π, Y) = rand(rng, just_noise_model, T)
+@testset "Just noise" begin
+    just_noise_model = POVARModel(; θ, Σ=1.0 * I(D), p=zeros(D), ω, T)
+    (; X, proj, Y) = rand(rng, just_noise_model)
 
-@test all(iszero, π)
-@test mean(Y) ≈ 0 atol = 0.05
-@test std(Y) ≈ ω atol = 0.05
+    @test all(iszero, proj)
+    @test mean(Y) ≈ 0 atol = 0.05
+    @test std(Y) ≈ ω atol = 0.05
+end
 
-no_obs_model = POVARModel(; θ, Σ, p=zeros(D), ω=0.0)
-(; X, π, Y) = rand(rng, no_obs_model, T)
+@testset "No obs" begin
+    no_obs_model = POVARModel(; θ, Σ, p=zeros(D), ω=0.0, T)
+    (; X, proj, Y) = rand(rng, no_obs_model)
 
-@test all(iszero, π)
-@test all(iszero, Y)
+    @test all(iszero, proj)
+    @test all(iszero, Y)
+end
