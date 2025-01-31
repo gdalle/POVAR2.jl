@@ -1,25 +1,17 @@
 abstract type AbstractEstimator end
 
-function evaluate(
-    est::AbstractEstimator, dataset_train::Dataset, dataset_test::Dataset, model::POVARModel
-)
-    θ̂ = estimate(est, dataset_train, model)
-    (; X, proj, Y) = dataset_test
-    Ŷ_shifted = proj .* (θ̂ * X)
-    errors = (Ŷ_shifted[1:(end - 1)] .- Y[2:end])[proj[2:end]]
-    return mean(abs2, errors)
+function evaluate(θ̂::AbstractMatrix, dataset::Dataset)
+    (; X, proj, Y) = dataset
+    T = duration(dataset)
+    Ŷ_shifted = θ̂ * X
+    errors = (Ŷ_shifted[:, 1:(T - 1)] .- Y[:, 2:T])[proj[:, 2:T]]
+    return mean(abs, errors)
 end
 
-function tune(est::AbstractEstimator, ::Dataset, ::Dataset, ::POVARModel)
-    return est
-end
-
-## Exact
-
-struct ExactEstimator <: AbstractEstimator end
-
-function estimate(::ExactEstimator, dataset::Dataset, model::POVARModel)
-    return model.θ
+function estimation_error(rng, est::AbstractEstimator, model::POVARModel)
+    dataset = rand(rng, model)[1]
+    θ̂ = estimate(est, dataset, model)
+    return opnorm(θ̂ - model.θ, Inf)
 end
 
 ## Dense
@@ -32,52 +24,46 @@ function estimate(::DenseEstimator, dataset::Dataset, model::POVARModel)
     return Γ₁ * pinv(Γ₀)
 end
 
-## Dantzig
+## Sparse
 
-struct SparseEstimator{R<:Real} <: AbstractEstimator
-    λ::R
+@kwdef struct SparseEstimator <: AbstractEstimator
+    λ_vals::Vector{Float64} = 10 .^ collect(-6:0.5:2)
 end
 
-SparseEstimator() = SparseEstimator(NaN)
-
-function estimate(estimator::SparseEstimator, dataset::Dataset, model::POVARModel)
+function dantzig_solutions(dataset::Dataset, model::POVARModel, λ_vals)
     (; proj, Y) = dataset
-    (; λ) = estimator
     D = size(Y, 1)
     Γ₀, Γ₁ = empirical_covariances(proj, Y, model, [0, 1])
+
     opt = Model(HiGHS.Optimizer)
     set_silent(opt)
+
+    @variable(opt, λ in Parameter(0.0))
     @variable(opt, θ₊[1:D, 1:D] >= 0)
     @variable(opt, θ₋[1:D, 1:D] >= 0)
     @constraint(opt, (θ₊ - θ₋) * Γ₀ - Γ₁ .<= λ)
     @constraint(opt, Γ₁ - (θ₊ - θ₋) * Γ₀ .<= λ)
     @objective(opt, Min, sum(θ₊ + θ₋))
-    optimize!(opt)
-    @assert is_solved_and_feasible(opt)
-    θ̂ = value.(θ₊) .- value.(θ₋)
-    return θ̂
+
+    θ̂_solutions = Matrix{Float64}[]
+    for λi in λ_vals
+        set_parameter_value(λ, λi)
+        optimize!(opt)
+        @assert is_solved_and_feasible(opt)
+        θ̂ = value.(θ₊) .- value.(θ₋)
+        push!(θ̂_solutions, θ̂)
+    end
+    return θ̂_solutions
 end
 
-function tune(
-    ::SparseEstimator,
-    dataset_train::Dataset,
-    dataset_validation::Dataset,
-    model::POVARModel,
-)
-    λ_vals = 10 .^ (-4:0.2:4)
-    errors = map(λ_vals) do λ
-        evaluate(SparseEstimator(λ), dataset_train, dataset_validation, model)
+function estimate(est::SparseEstimator, dataset::Dataset, model::POVARModel)
+    (; λ_vals) = est
+    if length(λ_vals) == 1
+        return only(dantzig_solutions(dataset, model, λ_vals))
+    else
+        dataset_train, dataset_test = split(dataset)
+        θ̂_candidates = dantzig_solutions(dataset_train, model, λ_vals)
+        errors = map(θ̂ -> evaluate(θ̂, dataset_test), θ̂_candidates)
+        return θ̂_candidates[argmin(errors)]
     end
-    λ_best = λ_vals[argmin(errors)]
-    return SparseEstimator(λ_best)
-end
-
-function estimation_error(rng, est::AbstractEstimator, model::POVARModel; samples=10)
-    dataset_validation, dataset_test, datasets_train... = rand(rng, model, 2 + samples)
-    errors = map(1:samples) do s
-        best_est = tune(est, datasets_train[s], dataset_validation, model)
-        θ̂ = estimate(best_est, dataset_test, model)
-        return opnorm(θ̂ - model.θ, Inf)
-    end
-    return Particles(errors)
 end

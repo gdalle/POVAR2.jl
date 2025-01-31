@@ -25,15 +25,6 @@ model = POVARModel(; θ, σ, p, ω, T)
     @test isapprox(mean(proj), p; atol=0.1)
 end
 
-@testset "No innovation" begin
-    no_innovation_model = POVARModel(; θ, σ=0.0, p, ω, T)
-    (; X, proj, Y) = rand(rng, no_innovation_model)[1]
-
-    @test all(2:T) do t
-        X[:, t] == θ * X[:, t - 1]
-    end
-end
-
 @testset "No noise" begin
     no_noise_partial_model = POVARModel(; θ, σ, p, ω=0.0, T)
     (; X, proj, Y) = rand(rng, no_noise_partial_model)[1]

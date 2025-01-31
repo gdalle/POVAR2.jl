@@ -5,11 +5,14 @@ using Distributions: Bernoulli, MvNormal, Normal
 using HiGHS: HiGHS
 using JuMP:
     Model,
+    Parameter,
     @constraint,
     @objective,
     @variable,
     is_solved_and_feasible,
     optimize!,
+    parameter_value,
+    set_parameter_value,
     set_silent,
     termination_status,
     value
@@ -18,7 +21,7 @@ using LinearAlgebra: Diagonal, I, checksquare, dot, eigmin, issymmetric, mul!, o
 using MonteCarloMeasurements: Particles
 using OhMyThreads: tmap
 using Random: AbstractRNG, rand!
-using Statistics: mean
+using Statistics: mean, median
 using StatsBase: crosscov, sample
 
 include("model.jl")

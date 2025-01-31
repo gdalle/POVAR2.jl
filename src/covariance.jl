@@ -1,7 +1,7 @@
 function scaling(model::POVARModel, h::Integer)
     D = dimension(model)
     P = fill(model.p^2, D, D)
-    if h > 0
+    if h == 0
         for d in axes(P, 1)
             P[d, d] = model.p
         end 
