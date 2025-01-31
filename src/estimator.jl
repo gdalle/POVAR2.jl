@@ -28,8 +28,7 @@ struct DenseEstimator <: AbstractEstimator end
 
 function estimate(::DenseEstimator, dataset::Dataset, model::POVARModel)
     (; proj, Y) = dataset
-    Γ₀ = empirical_covariance(proj, Y, model, 0)
-    Γ₁ = empirical_covariance(proj, Y, model, 1)
+    Γ₀, Γ₁ = empirical_covariances(proj, Y, model, [0, 1])
     return Γ₁ * pinv(Γ₀)
 end
 
@@ -39,12 +38,13 @@ struct SparseEstimator{R<:Real} <: AbstractEstimator
     λ::R
 end
 
+SparseEstimator() = SparseEstimator(NaN)
+
 function estimate(estimator::SparseEstimator, dataset::Dataset, model::POVARModel)
     (; proj, Y) = dataset
     (; λ) = estimator
     D = size(Y, 1)
-    Γ₀ = empirical_covariance(proj, Y, model, 0)
-    Γ₁ = empirical_covariance(proj, Y, model, 1)
+    Γ₀, Γ₁ = empirical_covariances(proj, Y, model, [0, 1])
     opt = Model(HiGHS.Optimizer)
     set_silent(opt)
     @variable(opt, θ₊[1:D, 1:D] >= 0)
@@ -59,12 +59,25 @@ function estimate(estimator::SparseEstimator, dataset::Dataset, model::POVARMode
 end
 
 function tune(
-    ::SparseEstimator, dataset_train::Dataset, dataset_test::Dataset, model::POVARModel
+    ::SparseEstimator,
+    dataset_train::Dataset,
+    dataset_validation::Dataset,
+    model::POVARModel,
 )
     λ_vals = 10 .^ (-4:0.2:4)
     errors = map(λ_vals) do λ
-        evaluate(SparseEstimator(λ), dataset_train, dataset_test, model)
+        evaluate(SparseEstimator(λ), dataset_train, dataset_validation, model)
     end
     λ_best = λ_vals[argmin(errors)]
     return SparseEstimator(λ_best)
+end
+
+function estimation_error(rng, est::AbstractEstimator, model::POVARModel; samples=10)
+    dataset_validation, dataset_test, datasets_train... = rand(rng, model, 2 + samples)
+    errors = map(1:samples) do s
+        best_est = tune(est, datasets_train[s], dataset_validation, model)
+        θ̂ = estimate(best_est, dataset_test, model)
+        return opnorm(θ̂ - model.θ, Inf)
+    end
+    return Particles(errors)
 end
