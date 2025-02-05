@@ -9,6 +9,7 @@ using JuMP:
     @constraint,
     @objective,
     @variable,
+    fix,
     is_solved_and_feasible,
     optimize!,
     parameter_value,
@@ -33,7 +34,7 @@ include("slope.jl")
 export POVARModel
 export scaling, empirical_covariances
 export ExactEstimator, DenseEstimator, SparseEstimator
-export estimate, evaluate, tune, estimation_error
+export estimate, evaluate, tune, estimation_error, estimation_error_particles
 export random_transition
 export theil_sen
 

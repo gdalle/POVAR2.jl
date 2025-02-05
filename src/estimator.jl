@@ -8,18 +8,39 @@ function evaluate(θ̂::AbstractMatrix, dataset::Dataset)
     return mean(abs, errors)
 end
 
-function estimation_error(rng, est::AbstractEstimator, model::POVARModel)
-    dataset = rand(rng, model)[1]
-    θ̂ = estimate(est, dataset, model)
+function estimation_error(rng::AbstractRNG, est::AbstractEstimator, model::POVARModel)
+    dataset_train, dataset_validation = rand(rng, model, 2)
+    θ̂ = estimate(est, dataset_train, dataset_validation, model)
     return opnorm(θ̂ - model.θ, Inf)
+end
+
+function estimation_error_particles(
+    rng::AbstractRNG,
+    est::AbstractEstimator;
+    D::Integer,
+    S::Integer,
+    T::Integer,
+    p::Real,
+    σ::Real,
+    ω::Real,
+    samples::Integer=10,
+)
+    errors = tmap(1:samples) do _
+        θ = random_transition(rng, D, S)
+        model = POVARModel(; θ, p, σ, ω, T)
+        estimation_error(rng, est, model)
+    end
+    return Particles(errors)
 end
 
 ## Dense
 
 struct DenseEstimator <: AbstractEstimator end
 
-function estimate(::DenseEstimator, dataset::Dataset, model::POVARModel)
-    (; proj, Y) = dataset
+function estimate(
+    ::DenseEstimator, dataset_train::Dataset, dataset_validation::Dataset, model::POVARModel
+)
+    (; proj, Y) = dataset_train
     Γ₀, Γ₁ = empirical_covariances(proj, Y, model, [0, 1])
     return Γ₁ * pinv(Γ₀)
 end
@@ -35,10 +56,10 @@ function dantzig_solutions(dataset::Dataset, model::POVARModel, λ_vals)
     D = size(Y, 1)
     Γ₀, Γ₁ = empirical_covariances(proj, Y, model, [0, 1])
 
-    opt = Model(HiGHS.Optimizer)
+    opt = Model(HiGHS.Optimizer; add_bridges=false)
     set_silent(opt)
 
-    @variable(opt, λ in Parameter(0.0))
+    @variable(opt, λ)
     @variable(opt, θ₊[1:D, 1:D] >= 0)
     @variable(opt, θ₋[1:D, 1:D] >= 0)
     @constraint(opt, (θ₊ - θ₋) * Γ₀ - Γ₁ .<= λ)
@@ -47,7 +68,7 @@ function dantzig_solutions(dataset::Dataset, model::POVARModel, λ_vals)
 
     θ̂_solutions = Matrix{Float64}[]
     for λi in λ_vals
-        set_parameter_value(λ, λi)
+        fix(λ, λi)
         optimize!(opt)
         @assert is_solved_and_feasible(opt)
         θ̂ = value.(θ₊) .- value.(θ₋)
@@ -56,14 +77,18 @@ function dantzig_solutions(dataset::Dataset, model::POVARModel, λ_vals)
     return θ̂_solutions
 end
 
-function estimate(est::SparseEstimator, dataset::Dataset, model::POVARModel)
+function estimate(
+    est::SparseEstimator,
+    dataset_train::Dataset,
+    dataset_validation::Dataset,
+    model::POVARModel,
+)
     (; λ_vals) = est
     if length(λ_vals) == 1
-        return only(dantzig_solutions(dataset, model, λ_vals))
+        return only(dantzig_solutions(dataset_train, model, λ_vals))
     else
-        dataset_train, dataset_test = split(dataset)
         θ̂_candidates = dantzig_solutions(dataset_train, model, λ_vals)
-        errors = map(θ̂ -> evaluate(θ̂, dataset_test), θ̂_candidates)
+        errors = map(θ̂ -> evaluate(θ̂, dataset_validation), θ̂_candidates)
         return θ̂_candidates[argmin(errors)]
     end
 end

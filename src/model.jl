@@ -32,9 +32,9 @@ duration(dataset::Dataset) = size(dataset.X, 2)
 function split(dataset::Dataset)
     (; X, proj, Y) = dataset
     T_split = duration(dataset) ÷ 2
-    X1, X2 = X[:, 1:T_split], X[:, T_split+1:end]
-    proj1, proj2 = proj[:, 1:T_split], proj[:, T_split+1:end]
-    Y1, Y2 = Y[:, 1:T_split], Y[:, T_split+1:end]
+    X1, X2 = X[:, 1:T_split], X[:, (T_split + 1):end]
+    proj1, proj2 = proj[:, 1:T_split], proj[:, (T_split + 1):end]
+    Y1, Y2 = Y[:, 1:T_split], Y[:, (T_split + 1):end]
     d1 = Dataset(X1, proj1, Y1)
     d2 = Dataset(X2, proj2, Y2)
     return d1, d2

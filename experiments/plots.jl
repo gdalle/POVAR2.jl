@@ -1,3 +1,7 @@
+using Pkg
+Pkg.activate(dirname(@__DIR__))
+# Pkg.instantiate()
+
 using CairoMakie
 using MonteCarloMeasurements
 using OhMyThreads
@@ -6,8 +10,6 @@ using POVAR2
 using ProgressMeter
 using StableRNGs
 
-Pkg.activate(dirname(@__DIR__))
-
 update_theme!(;
     Scatter=(; cycle=Cycle([:color, :marker, :linestyle]; covary=true)),
     Lines=(; cycle=Cycle([:color, :linestyle]; covary=true)),
@@ -15,21 +17,15 @@ update_theme!(;
 
 PLOTS_PATH = joinpath(@__DIR__, "img/")
 
+p_vals = reverse([1, 1 / 2, 1 / 4, 1 / 8])
 DEFAULT_PARAMS = (; D=5, S=5, σ=1.0, ω=0.1, p=1.0, T=10_000)
 
 function plot_T(rng, DEFAULT_PARAMS; samples=10)
     (; D, S, σ, ω) = DEFAULT_PARAMS
-    p_vals = [0.1, 0.2, 0.4, 0.8]
     T_vals = round.(Int, 10 .^ range(2, 5, 20))
     T_errors = map(p_vals) do p
         @showprogress map(T_vals) do T
-            Particles(
-                map(1:samples) do s
-                    θ = random_transition(rng, D, D)
-                    model = POVARModel(; θ, p, σ, ω, T)
-                    estimation_error(rng, DenseEstimator(), model)
-                end,
-            )
+            estimation_error_particles(rng, DenseEstimator(); D, S, p, σ, ω, T, samples)
         end
     end
     fig = Figure()
@@ -57,17 +53,10 @@ end
 
 function plot_D(rng, DEFAULT_PARAMS; samples=10)
     (; T, σ, ω) = DEFAULT_PARAMS
-    p_vals = [0.1, 0.2, 0.4, 0.8]
     D_vals = round.(Int, 10 .^ range(0, 2, 20))
     D_errors = map(p_vals) do p
         @showprogress map(D_vals) do D
-            Particles(
-                map(1:samples) do s
-                    θ = random_transition(rng, D, D)
-                    model = POVARModel(; θ, p, σ, ω, T)
-                    estimation_error(rng, DenseEstimator(), model)
-                end,
-            )
+            estimation_error_particles(rng, DenseEstimator(); D, S, p, σ, ω, T, samples)
         end
     end
     fig = Figure()
@@ -94,17 +83,10 @@ end
 
 function plot_ω(rng, DEFAULT_PARAMS; samples=10)
     (; T, D, σ) = DEFAULT_PARAMS
-    p_vals = [0.1, 0.2, 0.4, 0.8]
     ω_vals = 10 .^ range(-2, 2, 20)
     ω_errors = map(p_vals) do p
         @showprogress map(ω_vals) do ω
-            Particles(
-                map(1:samples) do s
-                    θ = random_transition(rng, D, D)
-                    model = POVARModel(; θ, p, σ, ω, T)
-                    estimation_error(rng, DenseEstimator(), model)
-                end,
-            )
+            estimation_error_particles(rng, DenseEstimator(); D, S, p, σ, ω, T, samples)
         end
     end
     fig = Figure()
@@ -135,30 +117,17 @@ plot_ω(StableRNG(63), DEFAULT_PARAMS)
 
 (; σ, ω) = DEFAULT_PARAMS
 T = 1000
+p = 0.5
 D_vals = 10:5:50
 S_vals = 1:2:10
 
-rng = StableRNG(63)
-p = 0.5
-
-D = 40
-S = 4
-θ = random_transition(rng, D, S)
-model = POVARModel(; θ, p, σ, ω, T)
-@profview estimation_error(rng, SparseEstimator(), model)
-
 DS_errors = @showprogress map(Iterators.product(D_vals, S_vals)) do (D, S)
+    yield()
     if D >= S
-        return Particles(
-            map(1:10) do s
-                θ = random_transition(rng, D, S)
-                model = POVARModel(; θ, p, σ, ω, T)
-                estimation_error(rng, SparseEstimator(), model)
-            end,
-        )
+        return estimation_error_particles(StableRNG(63), SparseEstimator(); D, S, p, σ, ω, T, samples=30)
     else
-        return Particles(fill(NaN, 10))
+        return Particles([NaN])
     end
 end
 
-contourf(D_vals, S_vals, pmedian.(DS_errors); colormap=:plasma, levels=20)
+contourf(D_vals, S_vals, pmean.(DS_errors); colormap=:plasma, levels=20)
