@@ -26,6 +26,7 @@ function estimation_error_particles(
     samples::Integer=10,
 )
     errors = tmap(1:samples) do _
+        yield()
         θ = random_transition(rng, D, S)
         model = POVARModel(; θ, p, σ, ω, T)
         estimation_error(rng, est, model)
