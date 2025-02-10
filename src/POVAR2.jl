@@ -39,6 +39,6 @@ export ExactEstimator, DenseEstimator, SparseEstimator
 export estimate, evaluate, tune, estimation_error, estimation_error_particles
 export random_transition
 export theil_sen
-export plot_T, plot_D, plot_ω
+export plot_p, plot_T, plot_D, plot_S, plot_ω, plot_SD
 
 end # module POVAR2

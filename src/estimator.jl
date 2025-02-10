@@ -2,10 +2,19 @@ abstract type AbstractEstimator end
 
 function evaluate(θ̂::AbstractMatrix, dataset::Dataset)
     (; X, proj, Y) = dataset
+    (D, T) = size(X)
     T = duration(dataset)
     Ŷ_shifted = θ̂ * X
-    errors = (Ŷ_shifted[:, 1:(T - 1)] .- Y[:, 2:T])[proj[:, 2:T]]
-    return mean(abs, errors)
+    sum_abs_errors = 0.0
+    count_abs_errors = 0
+    for t in 2:T
+        for d in 1:D
+            pr = proj[d, t]
+            sum_abs_errors += abs2(Ŷ_shifted[d, t - 1] - Y[d, t]) * pr
+            count_abs_errors += pr
+        end
+    end
+    return sum_abs_errors / count_abs_errors
 end
 
 function estimation_error(rng::AbstractRNG, est::AbstractEstimator, model::POVARModel)
@@ -49,7 +58,7 @@ end
 ## Sparse
 
 @kwdef struct SparseEstimator <: AbstractEstimator
-    λ_vals::Vector{Float64} = 10 .^ collect(-6:0.5:2)
+    λ_vals::Vector{Float64} = 10 .^ collect(-5:0.2:1)
 end
 
 function dantzig_solutions(dataset::Dataset, model::POVARModel, λ_vals)
