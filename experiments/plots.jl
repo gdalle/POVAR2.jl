@@ -1,6 +1,6 @@
 using Pkg
 Pkg.activate(dirname(@__DIR__))
-# Pkg.instantiate()
+Pkg.instantiate()
 
 using CairoMakie
 using POVAR2
